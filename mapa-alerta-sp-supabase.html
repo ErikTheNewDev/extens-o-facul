@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa de Alerta São Paulo</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--bg:#f6f7f8;--ink:#1f2933;--mute:#66707a;--line:#dde1e5;--card:#fff;--brand:#d62839}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:var(--ink);color:#fff}
+header h1{font-size:1.05rem;margin:0;font-weight:700}
+header p{margin:2px 0 0;font-size:.8rem;color:#b9c0c7}
+.hbtns{display:flex;gap:8px;flex-shrink:0}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:10px 14px;font-weight:600}
+.btn:hover{filter:brightness(1.1)}
+.btn.sec{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btn.dark{background:#323f4b;color:#fff}
+.btn.sm{padding:6px 10px;font-size:.82rem}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.badge{background:#fff;color:var(--brand);border-radius:99px;padding:1px 7px;font-size:.78rem;margin-left:6px;font-weight:700}
+main{flex:1;display:flex;min-height:0}
+aside{width:340px;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.filters{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 10px;font-size:.82rem;display:flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+#lista{overflow:auto;flex:1;padding:6px 0;margin:0;list-style:none}
+#lista li{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+#lista li:hover{background:var(--bg)}
+#lista b{display:block;font-size:.92rem}
+#lista span{font-size:.8rem;color:var(--mute)}
+.vazio{padding:16px 14px;color:var(--mute);font-size:.88rem}
+#mapa{flex:1;min-width:0}
+.aviso{padding:10px 14px;font-size:.76rem;color:var(--mute);border-top:1px solid var(--line)}
+#toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-size:.9rem;display:none;z-index:2000;max-width:90vw;text-align:center}
+dialog{border:0;border-radius:12px;padding:20px;width:min(440px,92vw);box-shadow:0 10px 40px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h2{margin:0 0 4px;font-size:1.1rem}
+label{display:block;font-size:.85rem;font-weight:600;margin:12px 0 4px}
+select,textarea,input[type=text],input[type=password]{width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;font:inherit}
+textarea{min-height:80px;resize:vertical}
+.acoes{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.pop b{display:block;margin-bottom:2px}
+.pop small{color:#66707a}
+#dlgAdmin{width:min(640px,94vw);max-height:86vh;padding:0}
+.adminTop{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:6px;padding:12px 20px 0}
+.tab{border:0;background:var(--bg);padding:8px 14px;border-radius:8px 8px 0 0;font-weight:600;color:var(--mute)}
+.tab[aria-selected="true"]{background:var(--ink);color:#fff}
+#adminCorpo{padding:8px 20px 20px;overflow:auto;max-height:60vh}
+.item{padding:12px 0;border-bottom:1px solid var(--line);font-size:.88rem}
+.item p{margin:4px 0 8px;color:#3e4852}
+.item .meta{color:var(--mute);font-size:.78rem}
+.item .linha{display:flex;gap:6px;flex-wrap:wrap}
+.erro{color:var(--brand);font-size:.82rem;margin-top:6px;min-height:1em}
+@media(max-width:760px){
+ main{flex-direction:column-reverse}
+ aside{width:100%;height:42%;border-right:0;border-top:1px solid var(--line)}
+ header p{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Mapa de Alerta SP</h1>
+    <p>Locais de São Paulo reportados como perigosos pela comunidade</p>
+  </div>
+  <div class="hbtns">
+    <button class="btn dark" id="btnAdmin">Administrador<span class="badge" id="badge" hidden>0</span></button>
+    <button class="btn" id="btnReportar">Reportar local</button>
+  </div>
+</header>
+<div id="toast" role="status"></div>
+<main>
+  <aside>
+    <div class="filters" id="filtros" role="group" aria-label="Filtrar por tipo"></div>
+    <ul id="lista" aria-label="Locais perigosos"></ul>
+    <div class="aviso">Os reportes são relatos comunitários, não confirmações oficiais, e passam por validação antes de aparecer no mapa. Não se aproxime de locais perigosos para verificar. Em emergência, ligue 190.</div>
+  </aside>
+  <div id="mapa" aria-label="Mapa de São Paulo"></div>
+</main>
+
+<!-- Reportar -->
+<dialog id="dlg">
+  <h2>Reportar local perigoso</h2>
+  <small id="coordTxt" style="color:#66707a"></small>
+  <label for="tipo">Tipo de perigo</label>
+  <select id="tipo"></select>
+  <label for="nome">Nome do local ou referência</label>
+  <input type="text" id="nome" maxlength="80" placeholder="Ex.: esquina da Rua X com Av. Y">
+  <label for="desc">O que acontece aí?</label>
+  <textarea id="desc" maxlength="400" placeholder="Descreva o que você viu ou viveu e em qual horário costuma acontecer."></textarea>
+  <div class="acoes">
+    <button class="btn sec" id="cancelar" type="button">Cancelar</button>
+    <button class="btn" id="enviar" type="button">Enviar para validação</button>
+  </div>
+</dialog>
+
+<!-- Login do administrador -->
+<dialog id="dlgLogin">
+  <h2>Acesso do administrador</h2>
+  <label for="emailAdmin">E-mail do administrador</label>
+  <input type="text" id="emailAdmin" autocomplete="username" placeholder="seu@email.com">
+  <label for="senha">Senha</label>
+  <input type="password" id="senha" autocomplete="current-password">
+  <div class="erro" id="erroSenha" role="alert"></div>
+  <div class="acoes">
+    <button class="btn sec" id="loginCancelar" type="button">Cancelar</button>
+    <button class="btn" id="loginEntrar" type="button">Entrar</button>
+  </div>
+</dialog>
+
+<!-- Painel do administrador -->
+<dialog id="dlgAdmin">
+  <div class="adminTop">
+    <h2>Painel do administrador</h2>
+    <div class="linha" style="display:flex;gap:6px">
+      <button class="btn sec sm" id="sair" type="button">Sair</button>
+      <button class="btn sm" id="fecharAdmin" type="button">Fechar</button>
+    </div>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabPend" aria-selected="true">Pendentes</button>
+    <button class="tab" role="tab" id="tabPub" aria-selected="false">Publicados</button>
+  </div>
+  <div id="adminCorpo"></div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===== CONFIGURAÇÃO =====
+   Configure a URL e a chave pública do Supabase abaixo.
+   Nunca coloque service_role/secret key ou senha administrativa neste HTML.
+*/
+var SUPABASE_URL = 'https://ihaipeulcpawafaraidj.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_nzzoaVGN49_Iq5S_kg0FLg_sk1RmS_Z';
+var db = null;
+
+var TIPOS = {
+  assalto:{nome:'Assalto / roubo',cor:'#d62839'},
+  furto:{nome:'Furto',cor:'#f08a00'},
+  escuro:{nome:'Pouca iluminação',cor:'#6b4fbb'},
+  transito:{nome:'Trânsito perigoso',cor:'#2563eb'},
+  outro:{nome:'Outro',cor:'#66707a'}
+};
+var CENTRO = [-23.5505, -46.6333];
+
+var aprovados = [];
+var pendentes = [];
+var filtroAtivo = Object.keys(TIPOS).reduce(function(o,k){o[k]=true;return o;},{});
+var modoReporte = false, ponto = null, marcadorTemp = null, admin = false, abaAtual = 'pend';
+var canalRealtime = null;
+var atualizacaoTimer = null;
+
+function configurarBanco(){
+  if(!window.supabase || SUPABASE_URL.indexOf('https://') !== 0 ||
+     SUPABASE_ANON_KEY.indexOf('COLE_') === 0){
+    aviso('Configure a URL e a chave pública do Supabase antes de publicar.');
+    return false;
+  }
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return true;
+}
+async function carregarPublicados(){
+  if(!db) return;
+  var r = await db.from('reportes')
+    .select('id,tipo,nome,descricao,lat,lng,created_at')
+    .eq('status','aprovado')
+    .order('created_at',{ascending:false});
+  if(r.error){ console.error(r.error); aviso('Não foi possível carregar os reportes do mapa.'); return; }
+  aprovados = (r.data || []).map(function(p){
+    return {id:p.id,tipo:p.tipo,nome:p.nome,desc:p.descricao,lat:p.lat,lng:p.lng,data:p.created_at};
+  });
+  desenhar();
+}
+async function carregarPendentes(){
+  if(!db || !admin) return;
+  var r = await db.from('reportes')
+    .select('id,tipo,nome,descricao,lat,lng,status,created_at')
+    .eq('status','pendente')
+    .order('created_at',{ascending:false});
+  if(r.error){ console.error(r.error); aviso('Não foi possível carregar os reportes pendentes.'); return; }
+  pendentes = (r.data || []).map(function(p){
+    return {id:p.id,tipo:p.tipo,nome:p.nome,desc:p.descricao,lat:p.lat,lng:p.lng,data:p.created_at};
+  });
+  if(abaAtual==='pend' && dlgAdmin.open) desenharAdmin();
+  atualizarBadge();
+}
+function dataLocal(v){
+  if(!v) return '';
+  var d = new Date(v);
+  return isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR');
+}
+function iniciarAtualizacoes(){
+  if(!db) return;
+  carregarPublicados();
+  if(canalRealtime) db.removeChannel(canalRealtime);
+  canalRealtime = db.channel('reportes-mapa-publico')
+    .on('postgres_changes',{event:'*',schema:'public',table:'reportes'},function(){
+      carregarPublicados();
+      if(admin) carregarPendentes();
+    }).subscribe();
+  if(atualizacaoTimer) clearInterval(atualizacaoTimer);
+  atualizacaoTimer = setInterval(function(){
+    carregarPublicados();
+    if(admin) carregarPendentes();
+  },20000);
+}
+
+function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function aviso(msg){ var t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(aviso.t); aviso.t=setTimeout(function(){t.style.display='none';},4000); }
+
+/* ===== MAPA (provedores abertos, sem chave de API) =====
+   Se o primeiro provedor falhar, o mapa troca sozinho para o próximo.
+   Também dá para trocar manualmente no botão no canto superior direito do mapa. */
+var mapa = L.map('mapa').setView(CENTRO, 12);
+var PROVEDORES = [
+  {nome:'Ruas (Esri)',url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',opt:{maxZoom:19,attribution:'Tiles &copy; Esri'}},
+  {nome:'Ruas (OSM França)',url:'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',opt:{maxZoom:19,subdomains:'abc',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contribuidores, OSM França'}},
+  {nome:'Ruas (OSM padrão)',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',opt:{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}},
+  {nome:'Satélite (Esri)',url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',opt:{maxZoom:19,attribution:'Tiles &copy; Esri'}}
+];
+var bases = {}, camadasBase = [];
+PROVEDORES.forEach(function(p,i){
+  var c = L.tileLayer(p.url,p.opt), erros = 0, ok = false;
+  c.on('tileload',function(){ ok = true; });
+  c.on('tileerror',function(){
+    if(!ok && ++erros >= 4 && mapa.hasLayer(c) && i < 2){   /* troca automática só entre os provedores de ruas */
+      mapa.removeLayer(c); mapa.addLayer(camadasBase[i+1]);
+      aviso('Provedor de mapa indisponível. Trocando para "'+PROVEDORES[i+1].nome+'".');
+    }
+  });
+  bases[p.nome] = c; camadasBase.push(c);
+});
+camadasBase[0].addTo(mapa);
+L.control.layers(bases,null,{position:'topright'}).addTo(mapa);
+
+var camada = L.layerGroup().addTo(mapa);
+
+function desenhar(){
+  camada.clearLayers();
+  var ul = document.getElementById('lista'); ul.innerHTML = '';
+  var vis = aprovados.filter(function(p){ return filtroAtivo[p.tipo]; });
+  vis.forEach(function(p){
+    var t = TIPOS[p.tipo];
+    var m = L.circleMarker([p.lat,p.lng],{radius:11,color:'#fff',weight:2,fillColor:t.cor,fillOpacity:.9}).addTo(camada);
+    m.bindPopup('<div class="pop"><b>'+esc(p.nome)+'</b><small>'+esc(t.nome)+'</small><p>'+esc(p.desc)+'</p></div>');
+    var li = document.createElement('li');
+    li.tabIndex = 0;
+    li.innerHTML = '<b>'+esc(p.nome)+'</b><span><i class="dot" style="background:'+t.cor+'"></i> '+esc(t.nome)+'</span>';
+    var ir = function(){ mapa.setView([p.lat,p.lng],16); m.openPopup(); };
+    li.onclick = ir; li.onkeydown = function(e){ if(e.key==='Enter') ir(); };
+    ul.appendChild(li);
+  });
+  if(!vis.length){ ul.innerHTML = '<div class="vazio">Nenhum local para os filtros escolhidos.</div>'; }
+}
+
+/* ===== FILTROS ===== */
+var fBox = document.getElementById('filtros'), sel = document.getElementById('tipo');
+Object.keys(TIPOS).forEach(function(k){
+  var b = document.createElement('button');
+  b.className='chip'; b.setAttribute('aria-pressed','true');
+  b.innerHTML = '<i class="dot" style="background:'+TIPOS[k].cor+'"></i>'+TIPOS[k].nome;
+  b.onclick = function(){ filtroAtivo[k]=!filtroAtivo[k]; b.setAttribute('aria-pressed',filtroAtivo[k]); desenhar(); };
+  fBox.appendChild(b);
+  var o = document.createElement('option'); o.value=k; o.textContent=TIPOS[k].nome; sel.appendChild(o);
+});
+
+/* ===== REPORTAR ===== */
+var dlg = document.getElementById('dlg');
+document.getElementById('btnReportar').onclick = function(){
+  modoReporte = true; mapa.getContainer().style.cursor='crosshair';
+  aviso('Clique no mapa no local que você quer reportar.');
+};
+mapa.on('click',function(e){
+  if(!modoReporte) return;
+  modoReporte = false; mapa.getContainer().style.cursor='';
+  ponto = e.latlng;
+  if(marcadorTemp) mapa.removeLayer(marcadorTemp);
+  marcadorTemp = L.marker(ponto).addTo(mapa);
+  document.getElementById('coordTxt').textContent = 'Local escolhido: '+ponto.lat.toFixed(5)+', '+ponto.lng.toFixed(5);
+  dlg.showModal();
+});
+function fechar(){ dlg.close(); if(marcadorTemp){ mapa.removeLayer(marcadorTemp); marcadorTemp=null; } }
+document.getElementById('cancelar').onclick = fechar;
+document.getElementById('enviar').onclick = async function(){
+  var nome = document.getElementById('nome').value.trim();
+  var desc = document.getElementById('desc').value.trim();
+  if(!nome || !desc){ aviso('Preencha o local e a descrição.'); return; }
+  if(!ponto){ aviso('Escolha um ponto no mapa.'); return; }
+  if(!db){ aviso('O banco ainda não está configurado.'); return; }
+  var botao = document.getElementById('enviar');
+  botao.disabled = true; botao.textContent = 'Enviando...';
+  var r = await db.from('reportes').insert({
+    tipo:sel.value,nome:nome,descricao:desc,
+    lat:ponto.lat,lng:ponto.lng,status:'pendente'
+  });
+  botao.disabled = false; botao.textContent = 'Enviar para validação';
+  if(r.error){
+    console.error(r.error);
+    aviso('Não foi possível enviar. Verifique sua conexão e tente novamente.');
+    return;
+  }
+  document.getElementById('nome').value='';
+  document.getElementById('desc').value='';
+  fechar(); aviso('Reporte enviado para validação. Obrigado por contribuir!');
+  if(admin) await carregarPendentes();
+};
+
+/* ===== ADMINISTRADOR ===== */
+var dlgLogin = document.getElementById('dlgLogin'), dlgAdmin = document.getElementById('dlgAdmin');
+function atualizarBadge(){
+  var b = document.getElementById('badge');
+  b.textContent = pendentes.length; b.hidden = !(admin && pendentes.length);
+}
+document.getElementById('btnAdmin').onclick = async function(){
+  if(admin){ await abrirPainel(); }
+  else {
+    document.getElementById('emailAdmin').value='';
+    document.getElementById('senha').value='';
+    document.getElementById('erroSenha').textContent='';
+    dlgLogin.showModal();
+    document.getElementById('emailAdmin').focus();
+  }
+};
+async function entrar(){
+  if(!db){ document.getElementById('erroSenha').textContent='Configure o Supabase antes de entrar.'; return; }
+  var email = document.getElementById('emailAdmin').value.trim();
+  var senha = document.getElementById('senha').value;
+  if(!email || !senha){ document.getElementById('erroSenha').textContent='Informe e-mail e senha.'; return; }
+  var b = document.getElementById('loginEntrar');
+  b.disabled = true; b.textContent = 'Entrando...';
+  var login = await db.auth.signInWithPassword({email:email,password:senha});
+  b.disabled = false; b.textContent = 'Entrar';
+  if(login.error){
+    document.getElementById('erroSenha').textContent='E-mail ou senha incorretos.';
+    return;
+  }
+  var permissao = await db.from('admin_users').select('user_id').eq('user_id',login.data.user.id).maybeSingle();
+  if(permissao.error || !permissao.data){
+    await db.auth.signOut();
+    document.getElementById('erroSenha').textContent='Esta conta não tem permissão de administrador.';
+    return;
+  }
+  admin = true; dlgLogin.close();
+  await carregarPendentes(); atualizarBadge(); await abrirPainel();
+}
+document.getElementById('loginEntrar').onclick = entrar;
+document.getElementById('senha').onkeydown = function(e){ if(e.key==='Enter'){ e.preventDefault(); entrar(); } };
+document.getElementById('emailAdmin').onkeydown = function(e){ if(e.key==='Enter'){ e.preventDefault(); entrar(); } };
+document.getElementById('loginCancelar').onclick = function(){ dlgLogin.close(); };
+document.getElementById('fecharAdmin').onclick = function(){ dlgAdmin.close(); };
+document.getElementById('sair').onclick = async function(){
+  admin = false; pendentes = [];
+  await db.auth.signOut();
+  dlgAdmin.close(); atualizarBadge(); aviso('Você saiu do painel administrativo.');
+};
+async function abrirPainel(){
+  await carregarPendentes();
+  desenharAdmin();
+  if(!dlgAdmin.open) dlgAdmin.showModal();
+  document.getElementById('tabPend').focus();
+}
+document.getElementById('tabPend').onclick = async function(){ abaAtual='pend'; await carregarPendentes(); desenharAdmin(); };
+document.getElementById('tabPub').onclick = function(){ abaAtual='pub'; desenharAdmin(); };
+function verNoMapa(p){
+  dlgAdmin.close(); mapa.setView([p.lat,p.lng],16);
+  L.popup().setLatLng([p.lat,p.lng]).setContent('<div class="pop"><b>'+esc(p.nome)+'</b><small>'+esc(TIPOS[p.tipo].nome)+'</small></div>').openOn(mapa);
+}
+function desenharAdmin(){
+  document.getElementById('tabPend').textContent = 'Pendentes ('+pendentes.length+')';
+  document.getElementById('tabPub').textContent = 'Publicados ('+aprovados.length+')';
+  document.getElementById('tabPend').setAttribute('aria-selected',abaAtual==='pend');
+  document.getElementById('tabPub').setAttribute('aria-selected',abaAtual==='pub');
+  var corpo = document.getElementById('adminCorpo'); corpo.innerHTML='';
+  var lista = abaAtual==='pend' ? pendentes : aprovados;
+  if(!lista.length){
+    corpo.innerHTML = '<div class="vazio">'+(abaAtual==='pend'?'Nenhum reporte aguardando validação.':'Nenhum local publicado.')+'</div>'; return;
+  }
+  lista.forEach(function(p){
+    var d = document.createElement('div'); d.className='item';
+    d.innerHTML = '<b>'+esc(p.nome)+'</b> <span class="meta">('+esc(TIPOS[p.tipo].nome)+(p.data?', '+esc(dataLocal(p.data)):'')+')</span><p>'+esc(p.desc)+'</p><div class="linha"></div>';
+    var linha = d.lastChild;
+    function botao(txt,cls,fn){ var b=document.createElement('button'); b.className='btn sm '+cls; b.textContent=txt; b.onclick=fn; linha.appendChild(b); }
+    if(abaAtual==='pend'){
+      botao('Aprovar','',function(){
+        (async function(){
+          var r = await db.from('reportes').update({status:'aprovado'}).eq('id',p.id);
+          if(r.error){ console.error(r.error); aviso('Não foi possível aprovar o reporte.'); return; }
+          await carregarPendentes(); await carregarPublicados();
+          desenharAdmin(); atualizarBadge(); aviso('Reporte aprovado e publicado no mapa.');
+        })();
+      });
+      botao('Excluir','sec',function(){
+        if(!confirm('Excluir este reporte recebido?')) return;
+        (async function(){
+          var r = await db.from('reportes').delete().eq('id',p.id);
+          if(r.error){ console.error(r.error); aviso('Não foi possível excluir o reporte.'); return; }
+          await carregarPendentes(); desenharAdmin(); atualizarBadge();
+        })();
+      });
+    } else {
+      botao('Excluir do mapa','sec',function(){
+        if(!confirm('Excluir este local do mapa?')) return;
+        (async function(){
+          var r = await db.from('reportes').delete().eq('id',p.id);
+          if(r.error){ console.error(r.error); aviso('Não foi possível excluir o local.'); return; }
+          await carregarPublicados(); desenharAdmin();
+        })();
+      });
+    }
+    botao('Ver no mapa','sec',function(){ verNoMapa(p); });
+    corpo.appendChild(d);
+  });
+}
+
+configurarBanco(); atualizarBadge(); if(db) iniciarAtualizacoes();
+</script>
+</body>
+</html>
